@@ -1034,6 +1034,7 @@ struct touchpanel_data {
 	u64 irq_interval;/*Record the interruption time to calculate the reporting rate*/
 	u64 irq_handle_time;/*Record the interruption handle time*/
 	int high_frame_value;
+	int double_tap_pressed;
 };
 
 #ifdef CONFIG_OPLUS_TP_APK

@@ -95,7 +95,6 @@ int tp_1v8_power = 0;
 
 #define ABS(a, b) ((a - b > 0) ? a - b : b - a)
 
-static uint8_t DouTap_enable = 1;	        // double tap
 static uint8_t UpVee_enable  = 1;	        // V
 static uint8_t DownVee_enable = 1;		    // ^
 static uint8_t LeftVee_enable = 1; 			// >
@@ -538,15 +537,12 @@ static void tp_gesture_handle(struct touchpanel_data *ts)
 	memset(&gesture_info_temp, 0, sizeof(struct gesture_info));
 	ts->ts_ops->get_gesture_info(ts->chip_data, &gesture_info_temp);
 	tp_geture_info_transform(&gesture_info_temp, &ts->resolution_info);
-	if (ts->single_tap_support) {
-		if (gesture_info_temp.gesture_type == SingleTap) {
-			if (sec_double_tap(&gesture_info_temp) == 1) {
-				gesture_info_temp.gesture_type  = DouTap;
-			}
-		}
-	}
 
-	TPD_INFO("detect %s gesture\n", gesture_info_temp.gesture_type == DouTap ? "double tap" :
+
+	ts->double_tap_pressed = (sec_double_tap(&gesture_info_temp) == 1) ? 1 : 0;
+	sysfs_notify(&ts->client->dev.kobj, NULL, "double_tap_pressed");
+
+	TPD_INFO("detect %s gesture\n",
 		 gesture_info_temp.gesture_type == UpVee ? "up vee" :
 		 gesture_info_temp.gesture_type == DownVee ? "down vee" :
 		 gesture_info_temp.gesture_type == LeftVee ? "(>)" :
@@ -568,10 +564,6 @@ static void tp_gesture_handle(struct touchpanel_data *ts)
 		 gesture_info_temp.gesture_type == SGESTRUE ? "(S)" : "unknown");
 
 	switch (gesture_info_temp.gesture_type) {
-		case DouTap:
-			enabled = DouTap_enable;
-			key = KEY_DOUBLE_TAP;
-			break;
 		case UpVee:
 			enabled = UpVee_enable;
 			key = KEY_GESTURE_UP_ARROW;
@@ -679,6 +671,16 @@ static void tp_gesture_handle(struct touchpanel_data *ts)
 		notify_display_fpd(false);
 	}
 }
+
+static inline ssize_t double_tap_pressed_get(struct device *device,
+				struct device_attribute *attribute,
+				char *buffer)
+{
+	struct touchpanel_data *ts = dev_get_drvdata(device);
+	return scnprintf(buffer, PAGE_SIZE, "%i\n", ts->double_tap_pressed);
+}
+
+static DEVICE_ATTR(double_tap_pressed, S_IRUGO, double_tap_pressed_get, NULL);
 
 void tp_touch_btnkey_release(void)
 {
@@ -4667,6 +4669,10 @@ static int init_touchpanel_proc(struct touchpanel_data *ts)
 		register_device_proc("tp", ts->panel_data.manufacture_info.version, ts->panel_data.manufacture_info.manufacture);
 	}
 
+	if (device_create_file(&ts->client->dev, &dev_attr_double_tap_pressed)) {
+		TPD_INFO("driver_create_file failt\n");
+		ret = -ENOMEM;
+	}
 	//proc files-step2:/proc/touchpanel
 	prEntry_tp = proc_mkdir("touchpanel", NULL);
 	if (prEntry_tp == NULL) {
@@ -4724,7 +4730,6 @@ static int init_touchpanel_proc(struct touchpanel_data *ts)
     //proc files-step2-4:/proc/touchpanel/double_tap_enable (black gesture related interface)
     if (ts->black_gesture_support) {
         CREATE_GESTURE_NODE(single_tap);
-        CREATE_GESTURE_NODE(double_tap);
         CREATE_GESTURE_NODE(up_arrow);
         CREATE_GESTURE_NODE(down_arrow);
         CREATE_GESTURE_NODE(left_arrow);
@@ -6322,7 +6327,6 @@ static int init_input_device(struct touchpanel_data *ts)
 		set_bit(KEY_GESTURE_W, ts->input_dev->keybit);
 		set_bit(KEY_GESTURE_M, ts->input_dev->keybit);
 		set_bit(KEY_GESTURE_S, ts->input_dev->keybit);
-		set_bit(KEY_DOUBLE_TAP, ts->input_dev->keybit);
 		set_bit(KEY_GESTURE_CIRCLE, ts->input_dev->keybit);
 		set_bit(KEY_GESTURE_TWO_SWIPE, ts->input_dev->keybit);
 		set_bit(KEY_GESTURE_UP_ARROW, ts->input_dev->keybit);
