@@ -95,6 +95,7 @@ int tp_1v8_power = 0;
 
 #define ABS(a, b) ((a - b > 0) ? a - b : b - a)
 
+static uint8_t DouTap_enable = 1;	        // double tap
 static uint8_t UpVee_enable  = 1;	        // V
 static uint8_t DownVee_enable = 1;		    // ^
 static uint8_t LeftVee_enable = 1; 			// >
@@ -108,6 +109,7 @@ static uint8_t Down2UpSwip_enable = 1;	    // |^
 static uint8_t Mgestrue_enable = 1;			// M
 static uint8_t Wgestrue_enable = 1;			// W
 static uint8_t Sgestrue_enable = 1;			// S
+static uint8_t SingleTap_enable = 1;	    // single tap
 
 /*******Part2:declear Area********************************/
 static void speedup_resume(struct work_struct *work);
@@ -538,13 +540,17 @@ static void tp_gesture_handle(struct touchpanel_data *ts)
 	tp_geture_info_transform(&gesture_info_temp, &ts->resolution_info);
 
 
-	ts->double_tap_pressed = (sec_double_tap(&gesture_info_temp) == 1) ? 1 : 0;
-	sysfs_notify(&ts->client->dev.kobj, NULL, "double_tap_pressed");
+	if (ts->single_tap_pressed) {
+		if (gesture_info_temp.gesture_type == SingleTap) {
+			if (sec_double_tap(&gesture_info_temp) == 1) {
+				gesture_info_temp.gesture_type  = DouTap;
+                                sysfs_notify(&ts->client->dev.kobj, NULL, "double_tap_pressed");
+			}
+                        sysfs_notify(&ts->client->dev.kobj, NULL, "single_tap_pressed");
+		}
+	}
 
-	ts->single_tap_pressed = (gesture_info_temp.gesture_type == SingleTap) ? 1 : 0;
-	sysfs_notify(&ts->client->dev.kobj, NULL, "single_tap_pressed");
-
-	TPD_INFO("detect %s gesture\n",
+	TPD_INFO("detect %s gesture\n", gesture_info_temp.gesture_type == DouTap ? "double tap" :
 		 gesture_info_temp.gesture_type == UpVee ? "up vee" :
 		 gesture_info_temp.gesture_type == DownVee ? "down vee" :
 		 gesture_info_temp.gesture_type == LeftVee ? "(>)" :
@@ -560,6 +566,7 @@ static void tp_gesture_handle(struct touchpanel_data *ts)
 		 gesture_info_temp.gesture_type == Wgestrue ? "(W)" :
 		 gesture_info_temp.gesture_type == FingerprintDown ? "(fingerprintdown)" :
 		 gesture_info_temp.gesture_type == FingerprintUp ? "(fingerprintup)" :
+                 gesture_info_temp.gesture_type == SingleTap ? "single tap" :
 		 gesture_info_temp.gesture_type == PENDETECT ? "(pen detect)" :
 		 gesture_info_temp.gesture_type == Heart ? "heart" :
 		 gesture_info_temp.gesture_type == SGESTRUE ? "(S)" : "unknown");
@@ -4627,6 +4634,7 @@ static const struct file_operations proc_touch_apk_fops = {
 	    .owner = THIS_MODULE, \
 	};
 
+GESTURE_ATTR(single_tap, SingleTap_enable);
 GESTURE_ATTR(double_tap, DouTap_enable);
 GESTURE_ATTR(up_arrow, UpVee_enable);
 GESTURE_ATTR(down_arrow, DownVee_enable);
@@ -4740,6 +4748,8 @@ static int init_touchpanel_proc(struct touchpanel_data *ts)
 
     //proc files-step2-4:/proc/touchpanel/double_tap_enable (black gesture related interface)
     if (ts->black_gesture_support) {
+        CREATE_GESTURE_NODE(single_tap);
+        CREATE_GESTURE_NODE(double_tap);
         CREATE_GESTURE_NODE(up_arrow);
         CREATE_GESTURE_NODE(down_arrow);
         CREATE_GESTURE_NODE(left_arrow);
@@ -6349,6 +6359,7 @@ static int init_input_device(struct touchpanel_data *ts)
 		set_bit(KEY_GESTURE_W, ts->input_dev->keybit);
 		set_bit(KEY_GESTURE_M, ts->input_dev->keybit);
 		set_bit(KEY_GESTURE_S, ts->input_dev->keybit);
+		set_bit(KEY_DOUBLE_TAP, ts->input_dev->keybit);
 		set_bit(KEY_GESTURE_CIRCLE, ts->input_dev->keybit);
 		set_bit(KEY_GESTURE_TWO_SWIPE, ts->input_dev->keybit);
 		set_bit(KEY_GESTURE_UP_ARROW, ts->input_dev->keybit);
@@ -6359,6 +6370,7 @@ static int init_input_device(struct touchpanel_data *ts)
 		set_bit(KEY_GESTURE_SWIPE_DOWN, ts->input_dev->keybit);
 		set_bit(KEY_GESTURE_SWIPE_RIGHT, ts->input_dev->keybit);
 		set_bit(KEY_GESTURE_SWIPE_UP, ts->input_dev->keybit);
+		set_bit(KEY_GESTURE_SINGLE_TAP, ts->input_dev->keybit);
 	}
 
 	ts->kpd_input_dev->name = TPD_DEVICE"_kpd";
